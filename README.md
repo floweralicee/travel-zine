@@ -1,26 +1,51 @@
 # Somewhere, lately
 
-A tactile travel scrapbook for Alice. Built with React, Vinext, Cloudflare D1 and R2.
+A tactile travel scrapbook for Alice, built with React, Vinext, Cloudflare D1 and R2.
 
-## Working features
-- Responsive open-book journal with animated navigation, swipe and keyboard controls.
-- Separate entries and dated city/state stamps for every visit, including return trips.
-- Persistent entries in D1; original photo and drawing uploads in R2.
-- Photo EXIF date/GPS extraction; nearby previously recorded locations suggest a city. New locations require confirmation. Photos without metadata are entered manually.
-- Bucket-list inspiration photos and notes, convertible to completed visits.
-- Original drawing scans retained, with full-size viewing.
-- Clearly labeled illustrative entries when the journal is empty. Demo entries are never saved unless explicitly edited and saved.
+The repository originally contained only this README. The application source has now been restored as a new implementation in `app-source/`; no previous application code or production data was available in this checkout.
 
-## Not connected yet
-Automatic Apple Photos/iCloud album sync, an inbound SMS number, reverse geocoding for new cities, and image-to-3D city trophy generation need external integrations. No buttons imply these are connected. Photo picker uploads work on phones; HEIC should first be exported as JPEG. Multiple dates/cities in one upload should be split into separate entries manually.
+## Implemented
 
-The hosted site is owner-private. API access relies on the hosting access gate. Add application-level identity and ownership checks before any public/multiuser deployment. Uploaded content remains private to the hosted site; Git contains only example assets and source.
+- Responsive paper-book journal with animated entry turns, swipe and keyboard navigation.
+- Separate records and dated city/state stamps for each visit, including return trips.
+- Journal editing and durable storage through D1; original images and drawing scans stored in R2.
+- Uploads from a phone photo picker or camera exports, with editable captions and full-size viewing.
+- EXIF date/GPS extraction, nearby known-city suggestions within 20 km, and a review queue that groups mixed photos by capture day and GPS. Confirm all suggestions before saving.
+- A Someday collection for bucket-list images/screenshots and notes. “I made it here” converts a saved destination into a dated visit.
+- A keepsake shelf with dimensional photo cards and a drawing collection. These are not generated 3D city models.
+- Notes/metadata JSON export. Uploaded image bytes are not included in that export.
+- Clearly labeled example entries with fictional travel writing. Examples are not saved until explicitly edited and saved.
+- Save failures leave the open draft intact. Browser-only authoritative storage is not used.
+
+## Still to connect / build
+
+- Automatic Apple Photos/iCloud album sync: currently use the browser photo picker.
+- An inbound SMS/MMS number: requires a messaging provider and a verified sender/owner mapping.
+- Reverse geocoding for new cities: EXIF-assisted imports suggest known cities; new locations require manual city/region confirmation. Photo-group review splits batches by capture day and nearby GPS location; review every group before saving, and keep multi-day trips together when appropriate.
+- Screenshot-to-3D city models: requires a generation service and asset storage. Current keepsakes use the visit photograph.
+- HEIC/RAW conversion: export JPEG before upload. JPEG, PNG, and WebP are accepted, up to 20 MB per image.
+- Cross-device draft recovery, entry deletion and orphan-upload cleanup.
 
 ## Develop
-Use the declared pnpm version. Install with `pnpm install`, run `pnpm dev`, generate migrations with `pnpm db:generate`, and build with `pnpm build`. D1 binding: DB. R2 binding: BUCKET. Migrations live in drizzle/.
 
-## Example image credits
-- Sedona: Anthony Melone, https://unsplash.com/photos/YdzWGR7tvQk
-- San Francisco: Tobias Pfeifer, https://unsplash.com/photos/DPem4k5atCI
-- Kyoto: David Emrich, https://unsplash.com/photos/VCM99u6HltA
-All under the Unsplash License. Example travel writing is fictional.
+```sh
+cd app-source
+pnpm install
+pnpm dev
+pnpm db:generate
+pnpm build
+```
+
+Use the declared pnpm version. `app-source/.openai/hosting.json` declares D1 `DB` and R2 `BUCKET`; migrations are in `app-source/drizzle/`. Apply migrations and provision the bindings before live saves. The source is build-verified but has not been published from this checkout.
+
+## Access boundary
+
+This is a single-owner application designed for an owner-private Sites deployment. API reads and writes depend on that outer access gate, with same-origin checks on mutations. Do not deploy it to a public origin without adding application-level authentication and record ownership checks. Git contains only source and licensed example imagery, never personal uploads or credentials.
+
+## Example photo credits
+
+All under the [Unsplash License](https://unsplash.com/license):
+
+- [Sedona — Anthony Melone](https://unsplash.com/photos/brown-rock-formation-under-blue-sky-during-daytime-ut9T19ipAPA)
+- [San Francisco — Braden Collum](https://unsplash.com/photos/white-house-tsYlX1DSjn4)
+- [Kyoto — David Emrich](https://unsplash.com/photos/low-angle-photography-of-red-pagoda-house-WyKmY-op2xw)

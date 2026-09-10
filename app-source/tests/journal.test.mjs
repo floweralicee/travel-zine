@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {photoGroups,nearby,visitNumber,examples} from '../lib/journal.ts';
+const sedona=examples[0];
+assert.equal(nearby(34.87,-111.76,sedona),true);
+assert.equal(nearby(37.77,-122.42,sedona),false);
+assert.equal(nearby(0,0,{...sedona,latitude:undefined}),false);
+const photos=[{kind:'photo',date:'2025-01-01',latitude:34.87,longitude:-111.76},{kind:'photo',date:'2025-01-01',latitude:34.88,longitude:-111.77},{kind:'photo',date:'2025-01-02',latitude:34.87,longitude:-111.76},{kind:'photo',date:'2025-01-01',latitude:37.77,longitude:-122.42},{kind:'photo'},{kind:'drawing'}];
+assert.deepEqual(photoGroups(photos).map(g=>g.length),[2,1,1,1]);
+const visits=['b','a','c'].map(id=>({...sedona,id,date:'2025-01-01'}));
+assert.equal(visitNumber(visits[0],visits),2);
+assert.equal(visitNumber(visits[1],visits),1);
+assert.equal(visitNumber(visits[2],visits),3);
+console.log('Photo location/date grouping and distinct repeat-visit stamps passed.');
