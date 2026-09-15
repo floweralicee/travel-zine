@@ -13,6 +13,8 @@ import {
   MousePointer2,
 } from 'lucide-react';
 import Link from 'next/link';
+import { ComposableMap, Geographies, Geography } from 'react-simple-maps';
+import statesTopology from 'us-atlas/states-10m.json';
 
 type PassportRegion =
   | 'Pacific Northwest & Alaska'
@@ -31,14 +33,6 @@ type Region = {
   color: string;
   ink: string;
   states: string[];
-};
-
-type StateTile = {
-  code: string;
-  region: PassportRegion;
-  x: number;
-  y: number;
-  w?: number;
 };
 
 type ParkVisit = {
@@ -120,59 +114,115 @@ const regions: Region[] = [
   },
 ];
 
-const stateTiles: StateTile[] = [
-  { code: 'WA', region: 'Pacific Northwest & Alaska', x: 1, y: 2 },
-  { code: 'OR', region: 'Pacific Northwest & Alaska', x: 1, y: 3 },
-  { code: 'CA', region: 'Western', x: 1, y: 4, w: 1.15 },
-  { code: 'ID', region: 'Pacific Northwest & Alaska', x: 2, y: 3 },
-  { code: 'NV', region: 'Western', x: 2, y: 4 },
-  { code: 'AZ', region: 'Western', x: 2, y: 5 },
-  { code: 'MT', region: 'Rocky Mountain', x: 3, y: 2 },
-  { code: 'WY', region: 'Rocky Mountain', x: 3, y: 3 },
-  { code: 'UT', region: 'Rocky Mountain', x: 3, y: 4 },
-  { code: 'CO', region: 'Rocky Mountain', x: 4, y: 4 },
-  { code: 'NM', region: 'Southwest', x: 4, y: 5 },
-  { code: 'ND', region: 'Midwest', x: 5, y: 2 },
-  { code: 'SD', region: 'Midwest', x: 5, y: 3 },
-  { code: 'NE', region: 'Midwest', x: 5, y: 4 },
-  { code: 'KS', region: 'Midwest', x: 5, y: 5 },
-  { code: 'OK', region: 'Southwest', x: 5, y: 6 },
-  { code: 'TX', region: 'Southwest', x: 5.3, y: 7, w: 1.4 },
-  { code: 'MN', region: 'Midwest', x: 6, y: 2 },
-  { code: 'IA', region: 'Midwest', x: 6, y: 4 },
-  { code: 'MO', region: 'Midwest', x: 6, y: 5 },
-  { code: 'AR', region: 'Southwest', x: 6, y: 6 },
-  { code: 'LA', region: 'Southwest', x: 6.2, y: 7 },
-  { code: 'WI', region: 'Midwest', x: 7, y: 3 },
-  { code: 'IL', region: 'Midwest', x: 7, y: 4 },
-  { code: 'IN', region: 'Midwest', x: 8, y: 4 },
-  { code: 'MI', region: 'Midwest', x: 8, y: 3 },
-  { code: 'OH', region: 'Midwest', x: 9, y: 4 },
-  { code: 'KY', region: 'Southeast', x: 8, y: 5 },
-  { code: 'TN', region: 'Southeast', x: 8, y: 6, w: 1.5 },
-  { code: 'MS', region: 'Southeast', x: 7, y: 7 },
-  { code: 'AL', region: 'Southeast', x: 8, y: 7 },
-  { code: 'GA', region: 'Southeast', x: 9, y: 7 },
-  { code: 'FL', region: 'Southeast', x: 9.3, y: 8, w: 1.4 },
-  { code: 'SC', region: 'Southeast', x: 10, y: 6.8 },
-  { code: 'NC', region: 'Southeast', x: 10, y: 6 },
-  { code: 'WV', region: 'Mid-Atlantic', x: 9, y: 5 },
-  { code: 'VA', region: 'Mid-Atlantic', x: 10, y: 5.5 },
-  { code: 'PA', region: 'Mid-Atlantic', x: 10, y: 4 },
-  { code: 'MD', region: 'Mid-Atlantic', x: 11, y: 5.2 },
-  { code: 'DE', region: 'Mid-Atlantic', x: 11.65, y: 5.15 },
-  { code: 'DC', region: 'National Capital', x: 11.35, y: 5.55 },
-  { code: 'NY', region: 'North Atlantic', x: 11, y: 3 },
-  { code: 'NJ', region: 'North Atlantic', x: 11.7, y: 4.3 },
-  { code: 'CT', region: 'North Atlantic', x: 12.3, y: 3.9 },
-  { code: 'RI', region: 'North Atlantic', x: 12.9, y: 3.85 },
-  { code: 'MA', region: 'North Atlantic', x: 12.45, y: 3.25 },
-  { code: 'VT', region: 'North Atlantic', x: 12, y: 2.35 },
-  { code: 'NH', region: 'North Atlantic', x: 12.6, y: 2.35 },
-  { code: 'ME', region: 'North Atlantic', x: 13.2, y: 1.65 },
-  { code: 'AK', region: 'Pacific Northwest & Alaska', x: 1.2, y: 8.3, w: 1.35 },
-  { code: 'HI', region: 'Western', x: 3.1, y: 8.65, w: 1.1 },
-];
+const stateCodesByFips: Record<string, string> = {
+  '01': 'AL',
+  '02': 'AK',
+  '04': 'AZ',
+  '05': 'AR',
+  '06': 'CA',
+  '08': 'CO',
+  '09': 'CT',
+  '10': 'DE',
+  '11': 'DC',
+  '12': 'FL',
+  '13': 'GA',
+  '15': 'HI',
+  '16': 'ID',
+  '17': 'IL',
+  '18': 'IN',
+  '19': 'IA',
+  '20': 'KS',
+  '21': 'KY',
+  '22': 'LA',
+  '23': 'ME',
+  '24': 'MD',
+  '25': 'MA',
+  '26': 'MI',
+  '27': 'MN',
+  '28': 'MS',
+  '29': 'MO',
+  '30': 'MT',
+  '31': 'NE',
+  '32': 'NV',
+  '33': 'NH',
+  '34': 'NJ',
+  '35': 'NM',
+  '36': 'NY',
+  '37': 'NC',
+  '38': 'ND',
+  '39': 'OH',
+  '40': 'OK',
+  '41': 'OR',
+  '42': 'PA',
+  '44': 'RI',
+  '45': 'SC',
+  '46': 'SD',
+  '47': 'TN',
+  '48': 'TX',
+  '49': 'UT',
+  '50': 'VT',
+  '51': 'VA',
+  '53': 'WA',
+  '54': 'WV',
+  '55': 'WI',
+  '56': 'WY',
+  '72': 'PR',
+};
+
+const stateNamesByCode: Record<string, string> = {
+  AL: 'Alabama',
+  AK: 'Alaska',
+  AZ: 'Arizona',
+  AR: 'Arkansas',
+  CA: 'California',
+  CO: 'Colorado',
+  CT: 'Connecticut',
+  DE: 'Delaware',
+  DC: 'District of Columbia',
+  FL: 'Florida',
+  GA: 'Georgia',
+  HI: 'Hawaii',
+  ID: 'Idaho',
+  IL: 'Illinois',
+  IN: 'Indiana',
+  IA: 'Iowa',
+  KS: 'Kansas',
+  KY: 'Kentucky',
+  LA: 'Louisiana',
+  ME: 'Maine',
+  MD: 'Maryland',
+  MA: 'Massachusetts',
+  MI: 'Michigan',
+  MN: 'Minnesota',
+  MS: 'Mississippi',
+  MO: 'Missouri',
+  MT: 'Montana',
+  NE: 'Nebraska',
+  NV: 'Nevada',
+  NH: 'New Hampshire',
+  NJ: 'New Jersey',
+  NM: 'New Mexico',
+  NY: 'New York',
+  NC: 'North Carolina',
+  ND: 'North Dakota',
+  OH: 'Ohio',
+  OK: 'Oklahoma',
+  OR: 'Oregon',
+  PA: 'Pennsylvania',
+  RI: 'Rhode Island',
+  SC: 'South Carolina',
+  SD: 'South Dakota',
+  TN: 'Tennessee',
+  TX: 'Texas',
+  UT: 'Utah',
+  VT: 'Vermont',
+  VA: 'Virginia',
+  WA: 'Washington',
+  WV: 'West Virginia',
+  WI: 'Wisconsin',
+  WY: 'Wyoming',
+  PR: 'Puerto Rico',
+};
 
 const nationalParks = [
   'Acadia',
@@ -258,17 +308,64 @@ function countVisits(regionId: PassportRegion) {
   return visits.filter((visit) => visit.region === regionId && visit.visited).length;
 }
 
+function getRegionForState(stateCode: string) {
+  return regions.find((region) => region.states.includes(stateCode));
+}
+
+function countStateVisits(stateCode: string) {
+  return visits.filter((visit) => visit.state === stateCode && visit.visited).length;
+}
+
 function CancellationStamp({ visit }: { visit: ParkVisit }) {
   const region = getRegion(visit.region);
+  const stampId = `stamp-${visit.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+  const parkName = `${visit.name} ${visit.kind}`.toUpperCase();
+  const location = visit.place.toUpperCase();
 
   return (
-    <div className="cancellation-stamp" style={{ '--stamp-ink': region.ink } as React.CSSProperties}>
-      <span className="stamp-ring">Passport</span>
-      <strong>{visit.name}</strong>
-      <em>{visit.kind}</em>
-      <b>{visit.stampDate}</b>
-      <small>{visit.place}</small>
-    </div>
+    <svg
+      className="cancellation-stamp"
+      viewBox="0 0 220 220"
+      role="img"
+      aria-label={`${parkName}, ${visit.stampDate}, ${location}`}
+      style={{ '--stamp-ink': region.ink } as React.CSSProperties}
+    >
+      <defs>
+        <path id={`${stampId}-topArc`} d="M 31 110 A 79 79 0 0 1 189 110" />
+        <path id={`${stampId}-bottomArc`} d="M 189 110 A 79 79 0 0 1 31 110" />
+        <filter id={`${stampId}-ink`} x="-14%" y="-14%" width="128%" height="128%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.95" numOctaves="2" seed="7" result="noise" />
+          <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.15" xChannelSelector="R" yChannelSelector="G" />
+          <feComponentTransfer>
+            <feFuncA type="table" tableValues="0 .2 .48 .72 .92 1" />
+          </feComponentTransfer>
+        </filter>
+        <mask id={`${stampId}-wear`}>
+          <rect width="220" height="220" fill="white" />
+          <circle cx="60" cy="60" r="18" fill="black" opacity=".1" />
+          <circle cx="151" cy="69" r="14" fill="black" opacity=".08" />
+          <path d="M36 149 C72 137 98 160 133 151 C155 146 170 153 186 163" stroke="black" strokeWidth="9" opacity=".08" fill="none" />
+          <path d="M47 90 C87 100 118 77 174 91" stroke="black" strokeWidth="5" opacity=".06" fill="none" />
+        </mask>
+      </defs>
+      <g className="stamp-ink" filter={`url(#${stampId}-ink)`} mask={`url(#${stampId}-wear)`}>
+        <circle className="stamp-ring-outer" cx="110" cy="110" r="88" />
+        <circle className="stamp-ring-inner" cx="110" cy="110" r="70" />
+        <text className="stamp-arc stamp-arc-top">
+          <textPath href={`#${stampId}-topArc`} startOffset="50%" textAnchor="middle">
+            {parkName}
+          </textPath>
+        </text>
+        <text className="stamp-date" x="110" y="118" textAnchor="middle">
+          {visit.stampDate}
+        </text>
+        <text className="stamp-arc stamp-arc-bottom">
+          <textPath href={`#${stampId}-bottomArc`} startOffset="50%" textAnchor="middle">
+            {location}
+          </textPath>
+        </text>
+      </g>
+    </svg>
   );
 }
 
@@ -281,50 +378,47 @@ function PassportMap({
 }) {
   return (
     <div className="map-panel">
-      <svg className="passport-map" viewBox="0 0 920 610" role="img" aria-label="United States Passport region map">
-        <defs>
-          <filter id="paper-lift" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="8" stdDeviation="5" floodColor="#2b2418" floodOpacity=".18" />
-          </filter>
-        </defs>
-        <path className="map-paper" d="M70 130 C210 60 370 74 510 96 C653 119 746 95 828 154 C890 198 862 316 786 364 C698 419 560 397 449 430 C330 466 166 476 91 394 C18 315 18 173 70 130Z" />
-        {stateTiles.map((state) => {
-          const region = getRegion(state.region);
-          const regionVisits = countVisits(region.id);
-          const isSelected = selectedRegion === region.id;
-          const opacity = Math.min(0.92, 0.28 + regionVisits * 0.12);
+      <ComposableMap
+        className="passport-map"
+        projection="geoAlbersUsa"
+        projectionConfig={{ scale: 980 }}
+        role="img"
+        aria-label="United States Passport region map"
+      >
+        <Geographies geography={statesTopology}>
+          {({ geographies }) =>
+            geographies.map((geo) => {
+              const fips = String(geo.id).padStart(2, '0');
+              const stateCode = stateCodesByFips[fips];
+              const region = stateCode ? getRegionForState(stateCode) : undefined;
+              const stateVisits = stateCode ? countStateVisits(stateCode) : 0;
+              const isSelected = region?.id === selectedRegion;
+              const fill = region ? region.color : '#ded2bd';
+              const opacity = stateVisits > 0 ? Math.min(0.96, 0.58 + stateVisits * 0.07) : 0.32;
 
-          return (
-            <g
-              key={state.code}
-              className="state-hitbox"
-              role="button"
-              tabIndex={0}
-              aria-label={`${state.code}, ${region.id}`}
-              onClick={() => onSelectRegion(region.id)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') onSelectRegion(region.id);
-              }}
-            >
-              <rect
-                x={state.x * 58}
-                y={state.y * 50}
-                width={(state.w ?? 1) * 54}
-                height="45"
-                rx="12"
-                fill={region.color}
-                opacity={opacity}
-                stroke={isSelected ? '#261a12' : '#55412a'}
-                strokeWidth={isSelected ? 3 : 1.25}
-                filter="url(#paper-lift)"
-              />
-              <text x={state.x * 58 + ((state.w ?? 1) * 27)} y={state.y * 50 + 29} textAnchor="middle">
-                {state.code}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
+              return (
+                <Geography
+                  key={geo.rsmKey}
+                  geography={geo}
+                  className="state-geography"
+                  tabIndex={region ? 0 : -1}
+                  fill={fill}
+                  fillOpacity={opacity}
+                  stroke={isSelected ? '#3A2E24' : '#78644d'}
+                  strokeWidth={isSelected ? 1.2 : 0.55}
+                  aria-label={`${stateNamesByCode[stateCode] ?? 'State'}${region ? `, ${region.id}` : ''}${
+                    stateVisits ? `, ${stateVisits} visits` : ''
+                  }`}
+                  onClick={() => region && onSelectRegion(region.id)}
+                  onKeyDown={(event) => {
+                    if (region && (event.key === 'Enter' || event.key === ' ')) onSelectRegion(region.id);
+                  }}
+                />
+              );
+            })
+          }
+        </Geographies>
+      </ComposableMap>
       <div className="map-legend">
         {regions.map((region) => (
           <button
@@ -384,7 +478,7 @@ export default function Home() {
   }
 
   return (
-    <main className="adventure-desk">
+    <main className={`adventure-desk ${page === 0 ? 'intro-mode' : 'reading-mode'}`}>
       <header className="site-masthead">
         <Link className="site-mark" href="/">
           Alice&apos;s Adventure Book
@@ -401,33 +495,58 @@ export default function Home() {
       </header>
 
       <section className={`adventure-book page-${page} ${turning}`} aria-label="Digital flip book">
-        <div className="book-cord" aria-hidden="true" />
-        <div className="book-spine" aria-hidden="true" />
+        {page > 0 && <div className="book-cord" aria-hidden="true" />}
+        {page > 0 && <div className="book-spine" aria-hidden="true" />}
 
         {page === 0 && (
-          <div className="cover-spread">
-            <div className="inside-cover">
-              <div className="balloon-cluster" aria-hidden="true">
-                {Array.from({ length: 28 }).map((_, index) => (
-                  <span key={index} />
-                ))}
-              </div>
-              <strong>Adventure starts with one stamp.</strong>
-            </div>
-            <article className="front-cover">
-              <div className="corner top" />
-              <div className="corner bottom" />
-              <div className="cover-title">
-                <span>Alice&apos;s</span>
-                <h1>
-                  <span className="cover-word">Adventure</span>
-                  <span className="cover-word">Book</span>
-                </h1>
-              </div>
-              <div className="cover-medallion" aria-hidden="true">
-                <Compass size={36} />
-              </div>
-            </article>
+          <div className="closed-book-scene">
+            <button className="closed-book" type="button" onClick={() => flip(1)} aria-label="Open Alice's Adventure Book">
+              <span className="closed-spine">
+                <i />
+                <i />
+              </span>
+              <span className="closed-cover">
+                <span className="closed-corner top" />
+                <span className="closed-corner bottom" />
+                <span className="closed-lines top" />
+                <span className="closed-lines bottom" />
+                <span className="closed-oval" />
+                <span className="closed-title" aria-hidden="true">
+                  <span>
+                    <b>A</b>
+                    <b>l</b>
+                    <b>i</b>
+                    <b>c</b>
+                    <b>e</b>
+                    <b>&apos;s</b>
+                  </span>
+                  <span>
+                    <b>A</b>
+                    <b>d</b>
+                    <b>v</b>
+                    <b>e</b>
+                    <b>n</b>
+                    <b>t</b>
+                    <b>u</b>
+                    <b>r</b>
+                    <b>e</b>
+                  </span>
+                  <span>
+                    <b>B</b>
+                    <b>o</b>
+                    <b>o</b>
+                    <b>k</b>
+                  </span>
+                </span>
+                <span className="map-sticker" aria-hidden="true">
+                  <Compass size={26} />
+                </span>
+              </span>
+              <span className="closed-rope one" />
+              <span className="closed-rope two" />
+              <span className="closed-rope three" />
+            </button>
+            <p>Click to open</p>
           </div>
         )}
 
@@ -557,7 +676,7 @@ export default function Home() {
         )}
       </section>
 
-      <nav className="book-controls" aria-label="Flip book controls">
+      {page > 0 && <nav className="book-controls" aria-label="Flip book controls">
         <button type="button" onClick={() => flip(page - 1)} disabled={page === 0} aria-label="Previous page">
           <ArrowLeft size={18} />
         </button>
@@ -568,15 +687,15 @@ export default function Home() {
         <button type="button" onClick={() => flip(page + 1)} disabled={page === maxPage} aria-label="Next page">
           <ArrowRight size={18} />
         </button>
-      </nav>
+      </nav>}
 
-      <footer className="site-footer">
+      {page > 0 && <footer className="site-footer">
         <span>
           <MousePointer2 size={14} />
           Click the map regions, then flip through the stamps.
         </span>
         <a href="https://github.com/floweralicee/travel-zine">GitHub</a>
-      </footer>
+      </footer>}
     </main>
   );
 }
