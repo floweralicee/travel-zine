@@ -1,80 +1,582 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Plus, MapPin, Camera, BookOpen, Compass, Stamp as StampIcon, Pencil, X, ImagePlus, Check, Download, Award } from 'lucide-react';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Entry, Asset, examples, nearby, prettyDate, visitNumber, photoGroups } from '@/lib/journal';
-import * as exifr from 'exifr';
 
-function Stamp({ entry, number=1 }: {entry:Entry;number?:number}) { return <div className="visit-stamp" aria-label={`${entry.city}, ${entry.region}, ${prettyDate(entry.date)}, visit ${number}`}><span>{entry.region}</span><MapPin size={22}/><strong>{entry.city}</strong><b>{prettyDate(entry.date)}</b><small>VISIT No. {String(number).padStart(2,'0')}</small></div> }
-const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
-const blank = (kind:'visit'|'wish'): Entry => ({id:crypto.randomUUID(),city:'',region:'',date:kind==='visit'?today():'',title:'',note:'',kind,assets:[]});
+/* eslint-disable @next/next/no-img-element */
+import { useMemo, useState } from 'react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  BookOpen,
+  Camera,
+  ChevronRight,
+  Compass,
+  MapPin,
+  MousePointer2,
+} from 'lucide-react';
+import Link from 'next/link';
 
-export default function Home(){
- const [entries,setEntries]=useState<Entry[]>([]), [loaded,setLoaded]=useState(false), [error,setError]=useState('');
- const [section,setSection]=useState('journal'),[page,setPage]=useState(0),[direction,setDirection]=useState(1),[draft,setDraft]=useState<Entry|null>(null),[busy,setBusy]=useState(false),[formError,setFormError]=useState(''),[notice,setNotice]=useState(''),[lightbox,setLightbox]=useState<Asset|null>(null),[info,setInfo]=useState(false);
- const [queued,setQueued]=useState<Entry[]>([]);
- const swipe=useRef<number|null>(null),uploadRef=useRef<HTMLInputElement>(null),drawingRef=useRef<HTMLInputElement>(null);
- const source=entries.length?entries:examples;
- const visits=source.filter(e=>e.kind==='visit'), wishes=source.filter(e=>e.kind==='wish');
- const visible=section==='someday'?wishes:visits;
- const entry=visible[Math.min(page,Math.max(visible.length-1,0))];
- const sample=!entries.length;
- async function load(){try{setError('');const response=await fetch('/api/entries');if(!response.ok)throw Error('Your journal could not be loaded. Please try again.');const data=await response.json() as {entries:Entry[]};setEntries(data.entries);setLoaded(true);}catch(e){setError((e as Error).message);setLoaded(true);}}
- useEffect(()=>{load()},[]);
- useEffect(()=>{const context=(document as Document & {modelContext?:{registerTool:(tool:{name:string;description:string;inputSchema:object;annotations:object;execute:(input:unknown)=>unknown},options:{signal:AbortSignal})=>void|Promise<void>}}).modelContext;if(!context?.registerTool)return;const lifecycle=new AbortController();try{Promise.resolve(context.registerTool({name:'start_travel_entry',description:'Open an unsaved visit or bucket-list draft for the owner to review. Does not save an entry.',inputSchema:{type:'object',properties:{kind:{type:'string',enum:['visit','wish']},city:{type:'string',maxLength:100},region:{type:'string',maxLength:100}},required:['kind'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:false},execute(input){if(!input||typeof input!=='object')throw Error('Expected entry details');const value=input as Record<string,unknown>;if(value.kind!=='visit'&&value.kind!=='wish')throw Error('Kind must be visit or wish');for(const key of ['city','region'])if(value[key]!==undefined&&(typeof value[key]!=='string'||(value[key] as string).length>100))throw Error('Invalid place');setDraft(current=>current||{...blank(value.kind as 'visit'|'wish'),city:value.city as string||'',region:value.region as string||''});return {status:'editor_open',saved:false};}}, {signal:lifecycle.signal})).catch(console.error);}catch(e){console.error(e)}return()=>lifecycle.abort();},[]);
+type PassportRegion =
+  | 'Pacific Northwest & Alaska'
+  | 'Western'
+  | 'Rocky Mountain'
+  | 'Southwest'
+  | 'Midwest'
+  | 'Southeast'
+  | 'National Capital'
+  | 'Mid-Atlantic'
+  | 'North Atlantic';
 
- function turn(d:number){setDirection(d);setPage(p=>Math.max(0,Math.min(visible.length-1,p+d)));}
- useEffect(()=>{const key=(e:KeyboardEvent)=>{if(draft||lightbox||info||/INPUT|TEXTAREA|SELECT/.test((e.target as HTMLElement).tagName))return;if(e.key==='ArrowRight')turn(1);if(e.key==='ArrowLeft')turn(-1);};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key)},[visible.length,draft,lightbox,info]);
- function navigate(s:string){setSection(s);setPage(0);}
- function edit(e:Entry){setFormError('');setNotice('');setDraft({...e,id:e.demo?crypto.randomUUID():e.id,demo:undefined,assets:[...e.assets]});}
- async function upload(files:FileList|null,kind:'photo'|'drawing'){
-  if(!files||!draft)return;setBusy(true);setFormError('');let working={...draft,assets:[...draft.assets]};let unsupported=0;let needsSplit=false;
-  try{for(const file of Array.from(files)){
-   if(!['image/jpeg','image/png','image/webp'].includes(file.type)) {unsupported++;continue;}
-   if(file.size>20*1024*1024)throw Error('Please choose images smaller than 20 MB.');
-   const meta=kind==='photo'?await exifr.parse(file,{pick:['DateTimeOriginal','GPSLatitude','GPSLongitude','GPSLatitudeRef','GPSLongitudeRef']}).catch(()=>null):null;
-   let date='';if(meta?.DateTimeOriginal instanceof Date){const d=meta.DateTimeOriginal;date=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
-   const gps=kind==='photo'?await exifr.gps(file).catch(()=>null):null;
-   if(working.assets.length===0){if(date)working.date=date;if(gps){working.latitude=gps.latitude;working.longitude=gps.longitude;const match=source.find(e=>nearby(gps.latitude,gps.longitude,e));if(match){working.city=match.city;working.region=match.region;}}}
-   else if((date&&working.date&&date!==working.date)||(gps&&working.latitude!=null&&!nearby(gps.latitude,gps.longitude,working)))needsSplit=true;
-   const data=new FormData();data.append('file',file);const response=await fetch('/api/assets',{method:'POST',body:data});const result=await response.json() as {url:string;error?:string};if(!response.ok)throw Error(result.error||'Image upload failed.');
-   working.assets.push({url:result.url,name:file.name,kind,...(gps||{}),...(date?{date}:{})});setDraft({...working,assets:[...working.assets]});
+type Region = {
+  id: PassportRegion;
+  short: string;
+  color: string;
+  ink: string;
+  states: string[];
+};
+
+type StateTile = {
+  code: string;
+  region: PassportRegion;
+  x: number;
+  y: number;
+  w?: number;
+};
+
+type ParkVisit = {
+  name: string;
+  kind: 'National Park' | 'State Park';
+  region: PassportRegion;
+  state: string;
+  date: string;
+  stampDate: string;
+  place: string;
+  visited: boolean;
+  photos?: string[];
+  note?: string;
+};
+
+const regions: Region[] = [
+  {
+    id: 'Pacific Northwest & Alaska',
+    short: 'PNW + Alaska',
+    color: '#2262a8',
+    ink: '#153a69',
+    states: ['AK', 'WA', 'OR', 'ID'],
+  },
+  {
+    id: 'Western',
+    short: 'Western',
+    color: '#2f8f24',
+    ink: '#1d5f17',
+    states: ['CA', 'NV', 'AZ', 'HI'],
+  },
+  {
+    id: 'Rocky Mountain',
+    short: 'Rocky Mountain',
+    color: '#f1c62a',
+    ink: '#8a6b00',
+    states: ['MT', 'WY', 'UT', 'CO'],
+  },
+  {
+    id: 'Southwest',
+    short: 'Southwest',
+    color: '#aaa5a0',
+    ink: '#5d5a55',
+    states: ['NM', 'TX', 'OK', 'AR', 'LA'],
+  },
+  {
+    id: 'Midwest',
+    short: 'Midwest',
+    color: '#f05a32',
+    ink: '#8d2b17',
+    states: ['ND', 'SD', 'NE', 'KS', 'MN', 'IA', 'MO', 'WI', 'IL', 'IN', 'MI', 'OH'],
+  },
+  {
+    id: 'Southeast',
+    short: 'Southeast',
+    color: '#9740a5',
+    ink: '#5b2063',
+    states: ['KY', 'TN', 'MS', 'AL', 'GA', 'FL', 'SC', 'NC', 'PR', 'VI'],
+  },
+  {
+    id: 'National Capital',
+    short: 'Capital',
+    color: '#d94232',
+    ink: '#8a261f',
+    states: ['DC'],
+  },
+  {
+    id: 'Mid-Atlantic',
+    short: 'Mid-Atlantic',
+    color: '#cfe4f7',
+    ink: '#50708b',
+    states: ['PA', 'DE', 'MD', 'VA', 'WV'],
+  },
+  {
+    id: 'North Atlantic',
+    short: 'North Atlantic',
+    color: '#f0a221',
+    ink: '#946111',
+    states: ['ME', 'VT', 'NH', 'MA', 'RI', 'CT', 'NY', 'NJ'],
+  },
+];
+
+const stateTiles: StateTile[] = [
+  { code: 'WA', region: 'Pacific Northwest & Alaska', x: 1, y: 2 },
+  { code: 'OR', region: 'Pacific Northwest & Alaska', x: 1, y: 3 },
+  { code: 'CA', region: 'Western', x: 1, y: 4, w: 1.15 },
+  { code: 'ID', region: 'Pacific Northwest & Alaska', x: 2, y: 3 },
+  { code: 'NV', region: 'Western', x: 2, y: 4 },
+  { code: 'AZ', region: 'Western', x: 2, y: 5 },
+  { code: 'MT', region: 'Rocky Mountain', x: 3, y: 2 },
+  { code: 'WY', region: 'Rocky Mountain', x: 3, y: 3 },
+  { code: 'UT', region: 'Rocky Mountain', x: 3, y: 4 },
+  { code: 'CO', region: 'Rocky Mountain', x: 4, y: 4 },
+  { code: 'NM', region: 'Southwest', x: 4, y: 5 },
+  { code: 'ND', region: 'Midwest', x: 5, y: 2 },
+  { code: 'SD', region: 'Midwest', x: 5, y: 3 },
+  { code: 'NE', region: 'Midwest', x: 5, y: 4 },
+  { code: 'KS', region: 'Midwest', x: 5, y: 5 },
+  { code: 'OK', region: 'Southwest', x: 5, y: 6 },
+  { code: 'TX', region: 'Southwest', x: 5.3, y: 7, w: 1.4 },
+  { code: 'MN', region: 'Midwest', x: 6, y: 2 },
+  { code: 'IA', region: 'Midwest', x: 6, y: 4 },
+  { code: 'MO', region: 'Midwest', x: 6, y: 5 },
+  { code: 'AR', region: 'Southwest', x: 6, y: 6 },
+  { code: 'LA', region: 'Southwest', x: 6.2, y: 7 },
+  { code: 'WI', region: 'Midwest', x: 7, y: 3 },
+  { code: 'IL', region: 'Midwest', x: 7, y: 4 },
+  { code: 'IN', region: 'Midwest', x: 8, y: 4 },
+  { code: 'MI', region: 'Midwest', x: 8, y: 3 },
+  { code: 'OH', region: 'Midwest', x: 9, y: 4 },
+  { code: 'KY', region: 'Southeast', x: 8, y: 5 },
+  { code: 'TN', region: 'Southeast', x: 8, y: 6, w: 1.5 },
+  { code: 'MS', region: 'Southeast', x: 7, y: 7 },
+  { code: 'AL', region: 'Southeast', x: 8, y: 7 },
+  { code: 'GA', region: 'Southeast', x: 9, y: 7 },
+  { code: 'FL', region: 'Southeast', x: 9.3, y: 8, w: 1.4 },
+  { code: 'SC', region: 'Southeast', x: 10, y: 6.8 },
+  { code: 'NC', region: 'Southeast', x: 10, y: 6 },
+  { code: 'WV', region: 'Mid-Atlantic', x: 9, y: 5 },
+  { code: 'VA', region: 'Mid-Atlantic', x: 10, y: 5.5 },
+  { code: 'PA', region: 'Mid-Atlantic', x: 10, y: 4 },
+  { code: 'MD', region: 'Mid-Atlantic', x: 11, y: 5.2 },
+  { code: 'DE', region: 'Mid-Atlantic', x: 11.65, y: 5.15 },
+  { code: 'DC', region: 'National Capital', x: 11.35, y: 5.55 },
+  { code: 'NY', region: 'North Atlantic', x: 11, y: 3 },
+  { code: 'NJ', region: 'North Atlantic', x: 11.7, y: 4.3 },
+  { code: 'CT', region: 'North Atlantic', x: 12.3, y: 3.9 },
+  { code: 'RI', region: 'North Atlantic', x: 12.9, y: 3.85 },
+  { code: 'MA', region: 'North Atlantic', x: 12.45, y: 3.25 },
+  { code: 'VT', region: 'North Atlantic', x: 12, y: 2.35 },
+  { code: 'NH', region: 'North Atlantic', x: 12.6, y: 2.35 },
+  { code: 'ME', region: 'North Atlantic', x: 13.2, y: 1.65 },
+  { code: 'AK', region: 'Pacific Northwest & Alaska', x: 1.2, y: 8.3, w: 1.35 },
+  { code: 'HI', region: 'Western', x: 3.1, y: 8.65, w: 1.1 },
+];
+
+const nationalParks = [
+  'Acadia',
+  'Arches',
+  'Badlands',
+  'Big Bend',
+  'Bryce Canyon',
+  'Canyonlands',
+  'Capitol Reef',
+  'Carlsbad Caverns',
+  'Channel Islands',
+  'Crater Lake',
+  'Death Valley',
+  'Denali',
+  'Everglades',
+  'Gateway Arch',
+  'Glacier',
+  'Grand Canyon',
+  'Grand Teton',
+  'Great Basin',
+  'Great Smoky Mountains',
+  'Haleakala',
+  'Hawaii Volcanoes',
+  'Joshua Tree',
+  'Kings Canyon',
+  'Lassen Volcanic',
+  'Mesa Verde',
+  'Mount Rainier',
+  'Olympic',
+  'Petrified Forest',
+  'Pinnacles',
+  'Redwood',
+  'Rocky Mountain',
+  'Saguaro',
+  'Sequoia',
+  'Shenandoah',
+  'White Sands',
+  'Wind Cave',
+  'Yellowstone',
+  'Yosemite',
+  'Zion',
+];
+
+const visits: ParkVisit[] = [
+  {
+    name: 'Zion',
+    kind: 'National Park',
+    region: 'Rocky Mountain',
+    state: 'UT',
+    date: '2026-09-02',
+    stampDate: 'SEP 02 2026',
+    place: 'Springdale, Utah',
+    visited: true,
+    photos: ['/images/zion-adventure.jpeg'],
+    note: 'A warm canyon evening, red wall after red wall, and the little bison keychains in the foreground.',
+  },
+  { name: 'Yosemite', kind: 'National Park', region: 'Western', state: 'CA', date: '2025-06-14', stampDate: 'JUN 14 2025', place: 'Yosemite Valley, CA', visited: true },
+  { name: 'Sequoia', kind: 'National Park', region: 'Western', state: 'CA', date: '2025-07-04', stampDate: 'JUL 04 2025', place: 'Three Rivers, CA', visited: true },
+  { name: 'Kings Canyon', kind: 'National Park', region: 'Western', state: 'CA', date: '2025-07-05', stampDate: 'JUL 05 2025', place: 'Grant Grove, CA', visited: true },
+  { name: 'Joshua Tree', kind: 'National Park', region: 'Western', state: 'CA', date: '2025-11-18', stampDate: 'NOV 18 2025', place: 'Twentynine Palms, CA', visited: true },
+  { name: 'Pinnacles', kind: 'National Park', region: 'Western', state: 'CA', date: '2026-02-09', stampDate: 'FEB 09 2026', place: 'Paicines, CA', visited: true },
+  { name: 'Redwood', kind: 'National Park', region: 'Western', state: 'CA', date: '2026-03-21', stampDate: 'MAR 21 2026', place: 'Crescent City, CA', visited: true },
+  { name: 'Death Valley', kind: 'National Park', region: 'Western', state: 'CA', date: '2026-04-12', stampDate: 'APR 12 2026', place: 'Furnace Creek, CA', visited: true },
+  { name: 'Lassen Volcanic', kind: 'National Park', region: 'Western', state: 'CA', date: '2026-05-24', stampDate: 'MAY 24 2026', place: 'Mineral, CA', visited: true },
+  { name: 'Channel Islands', kind: 'National Park', region: 'Western', state: 'CA', date: '2026-06-08', stampDate: 'JUN 08 2026', place: 'Ventura, CA', visited: true },
+  { name: 'Big Basin Redwoods', kind: 'State Park', region: 'Western', state: 'CA', date: '2026-01-20', stampDate: 'JAN 20 2026', place: 'Boulder Creek, CA', visited: true },
+  { name: 'Anza-Borrego Desert', kind: 'State Park', region: 'Western', state: 'CA', date: '2026-03-02', stampDate: 'MAR 02 2026', place: 'Borrego Springs, CA', visited: true },
+  { name: 'Mount Tamalpais', kind: 'State Park', region: 'Western', state: 'CA', date: '2026-04-26', stampDate: 'APR 26 2026', place: 'Mill Valley, CA', visited: true },
+  { name: 'Point Lobos', kind: 'State Park', region: 'Western', state: 'CA', date: '2026-07-19', stampDate: 'JUL 19 2026', place: 'Carmel, CA', visited: true },
+];
+
+const sourceNotes = [
+  'Passport regions follow the official Passport To Your National Parks regional system.',
+  'Cancellation locations list was checked from America’s National Parks on Sep 15, 2026.',
+  'Zion photo metadata read locally: JPEG, iPhone 17 Pro Max, 5712 x 4284, created Sep 2, 2026.',
+];
+
+function getRegion(id: PassportRegion) {
+  return regions.find((region) => region.id === id)!;
+}
+
+function countVisits(regionId: PassportRegion) {
+  return visits.filter((visit) => visit.region === regionId && visit.visited).length;
+}
+
+function CancellationStamp({ visit }: { visit: ParkVisit }) {
+  const region = getRegion(visit.region);
+
+  return (
+    <div className="cancellation-stamp" style={{ '--stamp-ink': region.ink } as React.CSSProperties}>
+      <span className="stamp-ring">Passport</span>
+      <strong>{visit.name}</strong>
+      <em>{visit.kind}</em>
+      <b>{visit.stampDate}</b>
+      <small>{visit.place}</small>
+    </div>
+  );
+}
+
+function PassportMap({
+  selectedRegion,
+  onSelectRegion,
+}: {
+  selectedRegion: PassportRegion;
+  onSelectRegion: (region: PassportRegion) => void;
+}) {
+  return (
+    <div className="map-panel">
+      <svg className="passport-map" viewBox="0 0 920 610" role="img" aria-label="United States Passport region map">
+        <defs>
+          <filter id="paper-lift" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="8" stdDeviation="5" floodColor="#2b2418" floodOpacity=".18" />
+          </filter>
+        </defs>
+        <path className="map-paper" d="M70 130 C210 60 370 74 510 96 C653 119 746 95 828 154 C890 198 862 316 786 364 C698 419 560 397 449 430 C330 466 166 476 91 394 C18 315 18 173 70 130Z" />
+        {stateTiles.map((state) => {
+          const region = getRegion(state.region);
+          const regionVisits = countVisits(region.id);
+          const isSelected = selectedRegion === region.id;
+          const opacity = Math.min(0.92, 0.28 + regionVisits * 0.12);
+
+          return (
+            <g
+              key={state.code}
+              className="state-hitbox"
+              role="button"
+              tabIndex={0}
+              aria-label={`${state.code}, ${region.id}`}
+              onClick={() => onSelectRegion(region.id)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') onSelectRegion(region.id);
+              }}
+            >
+              <rect
+                x={state.x * 58}
+                y={state.y * 50}
+                width={(state.w ?? 1) * 54}
+                height="45"
+                rx="12"
+                fill={region.color}
+                opacity={opacity}
+                stroke={isSelected ? '#261a12' : '#55412a'}
+                strokeWidth={isSelected ? 3 : 1.25}
+                filter="url(#paper-lift)"
+              />
+              <text x={state.x * 58 + ((state.w ?? 1) * 27)} y={state.y * 50 + 29} textAnchor="middle">
+                {state.code}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+      <div className="map-legend">
+        {regions.map((region) => (
+          <button
+            key={region.id}
+            className={selectedRegion === region.id ? 'selected' : ''}
+            onClick={() => onSelectRegion(region.id)}
+            type="button"
+          >
+            <span style={{ backgroundColor: region.color }} />
+            {region.short}
+            <b>{countVisits(region.id)}</b>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ParkBadge({ name, lit }: { name: string; lit: boolean }) {
+  const initials = name
+    .split(' ')
+    .map((word) => word[0])
+    .join('')
+    .slice(0, 3);
+
+  return (
+    <div className={lit ? 'park-badge lit' : 'park-badge'} aria-label={`${name}${lit ? ', visited' : ''}`}>
+      <span>{initials}</span>
+      <small>{name}</small>
+    </div>
+  );
+}
+
+export default function Home() {
+  const [page, setPage] = useState(0);
+  const [selectedRegion, setSelectedRegion] = useState<PassportRegion>('Western');
+  const [turning, setTurning] = useState<'forward' | 'backward'>('forward');
+
+  const nationalVisited = useMemo(
+    () => new Set(visits.filter((visit) => visit.kind === 'National Park' && visit.visited).map((visit) => visit.name)),
+    [],
+  );
+  const stateVisited = visits.filter((visit) => visit.kind === 'State Park' && visit.visited).length;
+  const selectedVisits = visits.filter((visit) => visit.region === selectedRegion && visit.visited);
+  const zion = visits[0];
+  const maxPage = 4;
+
+  function flip(nextPage: number) {
+    const bounded = Math.max(0, Math.min(maxPage, nextPage));
+    setTurning(bounded >= page ? 'forward' : 'backward');
+    setPage(bounded);
   }
-  setNotice([unsupported?'Some files were skipped. Export HEIC or RAW files as JPEG first.':'',needsSplit?'These photos include different dates or places. Use the photo-group review to split these into separate entries, or keep them together if they belong to one visit.':'',working.latitude!=null?'Photo location found. Please confirm the city and visit date.':'Check the city and date before saving.'].filter(Boolean).join(' '));
-  }catch(e){setFormError((e as Error).message)}finally{setBusy(false);if(uploadRef.current)uploadRef.current.value='';if(drawingRef.current)drawingRef.current.value='';}
- }
- async function save(e:React.FormEvent){e.preventDefault();if(!draft)return;setBusy(true);setFormError('');try{const response=await fetch('/api/entries',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(draft)});const result=await response.json() as {entry:Entry;error?:string};if(!response.ok)throw Error(result.error||'Could not save. Your draft is still here.');setEntries(old=>[result.entry,...old.filter(e=>e.id!==result.entry.id)]);navigate(draft.kind==='wish'?'someday':'journal');if(queued.length){setDraft(queued[0]);setQueued(queued.slice(1));setNotice('Saved. Confirm this next group’s city and date before saving.');}else{setDraft(null);}}catch(e){setFormError((e as Error).message)}finally{setBusy(false)}}
- function splitPhotos(){if(!draft)return;const groups=photoGroups(draft.assets);if(groups.length<2)return;const drafts=groups.map((assets,i)=>{const first=assets[0];const known=first.latitude!=null&&first.longitude!=null?source.find(e=>nearby(first.latitude!,first.longitude!,e)):null;return {...draft,id:i===0?draft.id:crypto.randomUUID(),city:known?.city||(i===0?draft.city:''),region:known?.region||(i===0?draft.region:''),date:first.date||draft.date,title:i===0?draft.title:'',note:i===0?draft.note:'',latitude:first.latitude,longitude:first.longitude,assets:i===0?[...assets,...draft.assets.filter(a=>a.kind==='drawing')]:assets};});setDraft(drafts[0]);setQueued(drafts.slice(1));setNotice('Photos grouped by capture day and nearby GPS location. Confirm each group before saving; undated photos are kept separate.');}
- function download(){const blob=new Blob([JSON.stringify(entries,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='somewhere-lately-journal.json';a.click();URL.revokeObjectURL(url);}
- return <main className="desk">
-  <header className="masthead"><a href="/" className="wordmark">somewhere, lately<span>A TRAVEL JOURNAL BY ALICE</span></a><div className="header-actions"><button className="quiet" onClick={()=>setInfo(true)}><Compass size={17}/> About this journal</button><button className="add-button" onClick={()=>{setDraft(blank(section==='someday'?'wish':'visit'));setFormError('');setNotice('')}}><Plus size={17}/> Add a memory</button></div></header>
-  <nav className="section-nav" aria-label="Journal sections">{[['journal','The journal',BookOpen],['stamps','Passport stamps',StampIcon],['someday','Someday places',Compass],['keepsakes','Keepsakes',Award]].map(([id,label,Icon])=><button key={id as string} aria-current={section===id?'page':undefined} onClick={()=>navigate(id as string)} className={section===id?'selected':''}><Icon size={16}/>{label as string}</button>)}</nav>
-  <div className="status-line" role="status">{error?<span>{error} <button onClick={load}>Retry</button></span>:!loaded?'Opening your journal…':sample?'A few example pages. Your own story starts with “Add a memory”.':`${visits.length} visits · ${new Set(visits.map(v=>v.city.toLowerCase()+v.region.toLowerCase())).size} places · still collecting`}</div>
-  {(section==='journal'||section==='someday')&&<>
-  <div className="book-wrap"><div className="book" onTouchStart={e=>swipe.current=e.touches[0].clientX} onTouchEnd={e=>{if(swipe.current==null)return;const d=swipe.current-e.changedTouches[0].clientX;if(Math.abs(d)>70)turn(d>0?1:-1);swipe.current=null;}}>
-  {entry?<div key={entry.id} className={`spread ${direction<0?'backward':''}`}>
-   <article className="paper left-page"><div className="page-eyebrow"><span>{section==='someday'?'THE SOMEDAY FILE':'FIELD NOTES'}</span><span>{entry.demo?'EXAMPLE ENTRY':`No. ${String(page+1).padStart(2,'0')}`}</span></div>
-   <div className="destination"><span className="handwritten">{section==='someday'?'a place I keep dreaming of':'a little piece of'}</span><h1>{entry.city}<span>.</span></h1><p><MapPin size={13}/>{entry.region} <span> / </span> {prettyDate(entry.date)}</p></div>
-   <button className="photo taped" onClick={()=>setLightbox(entry.assets.find(a=>a.kind==='photo')||entry.assets[0]||null)} disabled={!entry.assets.length}>
-    {entry.assets.length?<img src={(entry.assets.find(a=>a.kind==='photo')||entry.assets[0]).url} alt={(entry.assets.find(a=>a.kind==='photo')||entry.assets[0]).name}/>:<div className="photo-empty"><Camera/><span>A space for the view you want to remember.</span></div>}<span className="photo-caption">{entry.assets.length?entry.assets[0].name:'Your next favorite photograph'}</span>
-   </button><div className="left-foot"><span className="handwritten">{section==='someday'?'one day, I’ll be here.':'wish I could bottle this feeling.'}</span><span className="page-number">{String(page*2+1).padStart(2,'0')}</span></div>
-   </article>
-   <article className="paper right-page"><div className="page-eyebrow"><span>{section==='someday'?'SAVED FOR LATER':'THINGS I WANT TO REMEMBER'}</span><button className="paper-link" onClick={()=>edit(entry)}><Pencil size={13}/> Edit page</button></div>
-   <h2>{entry.title||`Notes from ${entry.city}`}</h2><p className="journal-writing">{entry.note||'The story is still being written.'}</p>
-   <div className="scraps">{entry.assets.filter(a=>a.kind==='drawing').slice(0,1).map(a=><button key={a.url} className="drawing-scrap" onClick={()=>setLightbox(a)}><img src={a.url} alt={a.name}/><span className="handwritten">from my sketchbook</span></button>)}{!entry.assets.some(a=>a.kind==='drawing')&&<button className="sketch-invitation" onClick={()=>edit(entry)}><Pencil size={22}/><span className="handwritten">a sketch belongs here</span><small>Add a drawing or a page from your notebook</small></button>}
-   {section==='journal'?<Stamp entry={entry} number={visitNumber(entry,visits)}/>:<div className="someday-ticket"><span>ONE DAY TICKET</span><strong>{entry.city}</strong><small>Good for a little adventure</small></div>}</div>
-   {entry.assets.length>1&&<div className="filmstrip">{entry.assets.slice(1).map(a=><button key={a.url} onClick={()=>setLightbox(a)}><img src={a.url} alt={a.name}/></button>)}</div>}
-   <div className="right-foot">{section==='someday'?<button className="paper-link" onClick={()=>{edit({...entry,kind:'visit',date:today()});}}><Check size={14}/> I made it here</button>:<span>{entry.assets.filter(a=>a.kind==='photo').length} photographs · {entry.assets.filter(a=>a.kind==='drawing').length} drawings</span>}<span className="page-number">{String(page*2+2).padStart(2,'0')}</span></div>
-   </article>
-  </div>:<div className="empty-book"><Compass size={32}/><h1>{section==='someday'?'Where to, someday?':'The first page is yours.'}</h1><p>{section==='someday'?'Save a place and the image that made you want to go.':'Add your first trip, photograph, or handwritten memory.'}</p><button className="add-button" onClick={()=>setDraft(blank(section==='someday'?'wish':'visit'))}><Plus size={16}/> {section==='someday'?'Save a place':'Add a memory'}</button></div>}
-  </div><div className="ribbon" aria-hidden="true"/></div>
-  <div className="book-controls"><button aria-label="Previous entry" disabled={page===0} onClick={()=>turn(-1)}><ArrowLeft size={18}/></button><span>{visible.length?`${String(Math.min(page+1,visible.length)).padStart(2,'0')} / ${String(visible.length).padStart(2,'0')}`:'NO ENTRIES YET'}</span><button aria-label="Next entry" disabled={page>=visible.length-1} onClick={()=>turn(1)}><ArrowRight size={18}/></button></div><p className="flip-hint">Turn the pages. Take your time. <span>← → or swipe</span></p>
-  </>}
-  {section==='stamps'&&<section className="collection-page"><div className="collection-heading"><span className="handwritten">proof that I was here</span><h1>Every visit leaves a mark.</h1><p>A new date, a new stamp. Even when the place feels like home.</p></div><div className="stamp-grid">{visits.map((v,i)=><button key={v.id} onClick={()=>{navigate('journal');setPage(i)}}><Stamp entry={v} number={visitNumber(v,visits)}/><span>{v.demo?'Example visit':v.title||v.city}</span></button>)}</div>{!visits.length&&<p>No stamps yet. Add a visit to collect your first one.</p>}</section>}
-  {section==='keepsakes'&&<section className="collection-page"><div className="collection-heading"><span className="handwritten">little things, kept forever</span><h1>The keepsake shelf.</h1><p>Collected places and pages from your sketchbook.</p></div><div className="keepsake-grid">{visits.map((v,i)=><button className="keepsake" key={v.id} onClick={()=>{navigate('journal');setPage(i)}}>{v.assets.length?<img src={v.assets[0].url} alt={v.city}/>:<Award size={48}/>}<strong>{v.city}</strong><span>{prettyDate(v.date)}</span><small>{v.demo?'EXAMPLE KEEPSAKE':'COLLECTED'}</small></button>)}</div><div className="drawing-grid">{visits.flatMap(v=>v.assets.filter(a=>a.kind==='drawing').map(a=><button key={v.id+a.url} onClick={()=>setLightbox(a)}><img src={a.url} alt={a.name}/><span>{v.city} · {prettyDate(v.date)}</span></button>))}</div><p className="integration-note">These are photo keepsakes. City models generated in 3D are not connected yet.</p></section>}
-  <footer className="desk-footer"><span>COLLECT MOMENTS, NOT MILES.</span><button onClick={download} disabled={!entries.length}><Download size={14}/> Export notes</button><span>an unfinished collection, always.</span></footer>
-  <Dialog open={!!draft} onOpenChange={open=>{if(!open&&!busy){setDraft(null);setQueued([])}}}><DialogContent className="editor-dialog"><DialogTitle>{draft?.kind==='wish'?'Save a someday place':'A page for this visit'}</DialogTitle><DialogDescription>{draft?.kind==='wish'?'Keep the image that hooked you, and why you want to go.':'Each visit gets its own date, photos, drawings, and stamp.'}</DialogDescription>{draft&&<form onSubmit={save}><fieldset disabled={busy} className="entry-form"><div className="form-row"><label>City<input required maxLength={100} value={draft.city} onChange={e=>setDraft({...draft,city:e.target.value})} placeholder="Sedona"/></label><label>State / region<input required maxLength={100} value={draft.region} onChange={e=>setDraft({...draft,region:e.target.value})} placeholder="Arizona"/></label></div>{draft.kind==='visit'&&<label>Date of visit<input required type="date" value={draft.date} onChange={e=>setDraft({...draft,date:e.target.value})}/></label>}<label>Page title<input maxLength={180} value={draft.title} onChange={e=>setDraft({...draft,title:e.target.value})} placeholder="The little things I want to remember"/></label><label>{draft.kind==='wish'?'Why this place?':'What happened here?'}<textarea rows={5} maxLength={20000} value={draft.note} onChange={e=>setDraft({...draft,note:e.target.value})} placeholder="The light, the people, the detour. All of it belongs here."/></label><div className="upload-buttons"><button type="button" disabled={busy} onClick={()=>uploadRef.current?.click()}><ImagePlus size={17}/> Photos / screenshot</button><button type="button" disabled={busy} onClick={()=>drawingRef.current?.click()}><Pencil size={17}/> Drawing scan</button></div><input hidden type="file" accept="image/jpeg,image/png,image/webp" multiple ref={uploadRef} onChange={e=>upload(e.target.files,'photo')}/><input hidden type="file" accept="image/jpeg,image/png,image/webp" multiple ref={drawingRef} onChange={e=>upload(e.target.files,'drawing')}/><p className="form-help">Choose images from your phone or camera. JPEG, PNG, WebP, up to 20 MB each. Original drawing texture is preserved. Location and date are read when available.</p>{draft.kind==='visit'&&photoGroups(draft.assets).length>1&&<button type="button" className="group-button" onClick={splitPhotos}>Review {photoGroups(draft.assets).length} photo groups by date and location</button>}{queued.length>0&&<p className="form-help">{queued.length} more groups to review after this visit. Closing discards unsaved groups.</p>}<div className="uploaded-assets">{draft.assets.map((a,i)=><div key={a.url}><img src={a.url} alt={a.name}/><button type="button" aria-label={`Remove ${a.name}`} disabled={busy} onClick={()=>setDraft({...draft,assets:draft.assets.filter((_,n)=>i!==n)})}><X size={14}/></button><input aria-label={`Caption for ${a.name}`} value={a.name} maxLength={250} onChange={e=>setDraft({...draft,assets:draft.assets.map((asset,n)=>n===i?{...asset,name:e.target.value}:asset)})}/></div>)}</div>{notice&&<p className="form-help" role="status">{notice}</p>}{formError&&<p className="form-error" role="alert">{formError}</p>}<button className="save-button" disabled={busy} type="submit">{busy?'Saving your memories…':draft.kind==='wish'?'Save for someday':'Save this visit'} <ArrowRight size={16}/></button></fieldset></form>}</DialogContent></Dialog>
-  <Dialog open={!!lightbox} onOpenChange={open=>!open&&setLightbox(null)}><DialogContent className="lightbox-dialog"><DialogTitle>{lightbox?.name}</DialogTitle><DialogDescription>{lightbox?.kind==='drawing'?'Original scan, with your paper and pencil texture.':'A closer look.'}</DialogDescription>{lightbox&&<img src={lightbox.url} alt={lightbox.name}/>}</DialogContent></Dialog>
-  <Dialog open={info} onOpenChange={setInfo}><DialogContent className="about-dialog"><DialogTitle>Somewhere, lately</DialogTitle><DialogDescription>A personal book of places, pictures, and the things you noticed along the way.</DialogDescription><p>Save a separate entry each time you return to a city. Your stamp records that visit’s date. Add photos, notes, and scans of your drawings to its pages.</p><p>In Someday places, keep the screenshot that made you want to go. Choose “I made it here” when you visit.</p><p>Uploads work through your phone’s photo picker. Automatic Apple Photos sync, a text-to-save number, and image-to-3D models still need external services.</p><p>Example pages contain fictional writing and credited travel photography. They are not your recorded trips.</p></DialogContent></Dialog>
- </main>
+
+  function openRegion(region: PassportRegion) {
+    setSelectedRegion(region);
+    flip(2);
+  }
+
+  return (
+    <main className="adventure-desk">
+      <header className="site-masthead">
+        <Link className="site-mark" href="/">
+          Alice&apos;s Adventure Book
+          <span>National parks, state parks, stamps, photographs</span>
+        </Link>
+        <div className="shelf-counts" aria-label="Current collection counts">
+          <span>
+            <b>{nationalVisited.size}</b> / 63 national parks
+          </span>
+          <span>
+            <b>{stateVisited}</b> state parks
+          </span>
+        </div>
+      </header>
+
+      <section className={`adventure-book page-${page} ${turning}`} aria-label="Digital flip book">
+        <div className="book-cord" aria-hidden="true" />
+        <div className="book-spine" aria-hidden="true" />
+
+        {page === 0 && (
+          <div className="cover-spread">
+            <div className="inside-cover">
+              <div className="balloon-cluster" aria-hidden="true">
+                {Array.from({ length: 28 }).map((_, index) => (
+                  <span key={index} />
+                ))}
+              </div>
+              <strong>Adventure starts with one stamp.</strong>
+            </div>
+            <article className="front-cover">
+              <div className="corner top" />
+              <div className="corner bottom" />
+              <div className="cover-title">
+                <span>Alice&apos;s</span>
+                <h1>
+                  <span className="cover-word">Adventure</span>
+                  <span className="cover-word">Book</span>
+                </h1>
+              </div>
+              <div className="cover-medallion" aria-hidden="true">
+                <Compass size={36} />
+              </div>
+            </article>
+          </div>
+        )}
+
+        {page === 1 && (
+          <div className="paper-spread">
+            <article className="book-page map-left">
+              <p className="page-kicker">Passport map</p>
+              <h2>Color by region, shade by memory.</h2>
+              <p className="book-copy">
+                The darker a region gets, the more visits Alice has collected there. Pick a region to open its page.
+              </p>
+              <div className="source-slip">
+                {sourceNotes.map((note) => (
+                  <span key={note}>{note}</span>
+                ))}
+              </div>
+            </article>
+            <article className="book-page map-right">
+              <PassportMap selectedRegion={selectedRegion} onSelectRegion={openRegion} />
+            </article>
+          </div>
+        )}
+
+        {page === 2 && (
+          <div className="paper-spread">
+            <article className="book-page region-page">
+              <p className="page-kicker">Opened region</p>
+              <h2>{selectedRegion}</h2>
+              <p className="book-copy">
+                {selectedVisits.length} saved visits here. California is intentionally heavy for now, with Zion pinned as
+                the first 2026 canyon page.
+              </p>
+              <PassportMap selectedRegion={selectedRegion} onSelectRegion={setSelectedRegion} />
+            </article>
+            <article className="book-page region-list-page">
+              <div className="region-tabs">
+                {regions.map((region) => (
+                  <button
+                    key={region.id}
+                    type="button"
+                    className={selectedRegion === region.id ? 'active' : ''}
+                    onClick={() => setSelectedRegion(region.id)}
+                  >
+                    <span style={{ backgroundColor: region.color }} />
+                    {region.short}
+                  </button>
+                ))}
+              </div>
+              <div className="visit-ledger">
+                {selectedVisits.map((visit) => (
+                  <button
+                    key={visit.name}
+                    type="button"
+                    onClick={() => visit.name === 'Zion' && flip(3)}
+                    className={visit.name === 'Zion' ? 'featured' : ''}
+                  >
+                    <MapPin size={15} />
+                    <span>
+                      <strong>{visit.name}</strong>
+                      <small>
+                        {visit.kind} · {visit.place}
+                      </small>
+                    </span>
+                    <ChevronRight size={16} />
+                  </button>
+                ))}
+                {!selectedVisits.length && <p className="quiet-note">A clean page, waiting for a stamp.</p>}
+              </div>
+            </article>
+          </div>
+        )}
+
+        {page === 3 && (
+          <div className="paper-spread">
+            <article className="book-page zion-photo-page">
+              <p className="page-kicker">Sep 2, 2026</p>
+              <h2>Zion</h2>
+              <button className="polaroid" type="button" aria-label="Zion photograph">
+                <img src={zion.photos?.[0]} alt="Zion canyon photograph from Alice's trip" />
+                <span>IMG_3105 · Zion canyon</span>
+              </button>
+              <p className="metadata-line">
+                <Camera size={14} />
+                iPhone 17 Pro Max · JPEG · 5712 x 4284
+              </p>
+            </article>
+            <article className="book-page zion-notes-page">
+              <p className="page-kicker">Cancellation page</p>
+              <h2>Stamped into the book.</h2>
+              <p className="book-copy">{zion.note}</p>
+              <div className="stamp-placement">
+                <CancellationStamp visit={zion} />
+              </div>
+              <div className="tiny-photo-stack" aria-hidden="true">
+                <img src={zion.photos?.[0]} alt="" />
+                <img src={zion.photos?.[0]} alt="" />
+              </div>
+            </article>
+          </div>
+        )}
+
+        {page === 4 && (
+          <div className="paper-spread collection-spread">
+            <article className="book-page">
+              <p className="page-kicker">Collection</p>
+              <h2>{nationalVisited.size} of 63 U.S. National Parks</h2>
+              <p className="book-copy">
+                Visited badges light up; unvisited ones stay pressed into the dark paper until Alice gets there.
+              </p>
+              <div className="mini-stats">
+                <span>
+                  <b>{nationalVisited.size}</b> national parks
+                </span>
+                <span>
+                  <b>{stateVisited}</b> state parks
+                </span>
+              </div>
+            </article>
+            <article className="book-page badge-page">
+              <div className="badge-grid">
+                {nationalParks.map((park) => (
+                  <ParkBadge key={park} name={park} lit={nationalVisited.has(park)} />
+                ))}
+              </div>
+            </article>
+          </div>
+        )}
+      </section>
+
+      <nav className="book-controls" aria-label="Flip book controls">
+        <button type="button" onClick={() => flip(page - 1)} disabled={page === 0} aria-label="Previous page">
+          <ArrowLeft size={18} />
+        </button>
+        <div>
+          <BookOpen size={16} />
+          <span>{page === 0 ? 'Cover' : `Spread ${page} / ${maxPage}`}</span>
+        </div>
+        <button type="button" onClick={() => flip(page + 1)} disabled={page === maxPage} aria-label="Next page">
+          <ArrowRight size={18} />
+        </button>
+      </nav>
+
+      <footer className="site-footer">
+        <span>
+          <MousePointer2 size={14} />
+          Click the map regions, then flip through the stamps.
+        </span>
+        <a href="https://github.com/floweralicee/travel-zine">GitHub</a>
+      </footer>
+    </main>
+  );
 }
